@@ -1,1 +1,305 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 Edge AI Dashboard</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #eef2f7;
+    margin: 0;
+    padding: 20px;
+    color: #1e293b;
+}
+
+header {
+    background: #17365d;
+    color: white;
+    padding: 22px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+h1 { margin: 0 0 8px; }
+h2 { color: #17365d; font-size: 20px; }
+
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+}
+
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px #0001;
+}
+
+.value {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.value strong { text-align: right; }
+
+input, button {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px;
+    margin-top: 10px;
+    border-radius: 7px;
+    font-size: 15px;
+}
+
+input { border: 1px solid #cbd5e1; }
+
+button {
+    background: #1769aa;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover { background: #104d80; }
+
+.result {
+    margin-top: 15px;
+    padding: 12px;
+    background: #edf4ff;
+    border-radius: 8px;
+    overflow-wrap: anywhere;
+}
+
+.preview {
+    width: 100%;
+    margin-top: 12px;
+    border-radius: 8px;
+}
+
+.note {
+    color: #64748b;
+    font-size: 13px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>ESP32 Edge AI Dashboard</h1>
+    <p>Environmental Monitoring and Traffic Density Detection</p>
+</header>
+
+<div class="dashboard">
+
+    <!-- BME680 -->
+    <section class="card">
+        <h2>BME680 Sensor</h2>
+        <div class="value"><span>Temperature</span><strong id="temperature">--</strong></div>
+        <div class="value"><span>Humidity</span><strong id="humidity">--</strong></div>
+        <div class="value"><span>Pressure</span><strong id="pressure">--</strong></div>
+        <div class="value"><span>Gas Resistance</span><strong id="gas">--</strong></div>
+    </section>
+
+    <!-- ZPH02 -->
+    <section class="card">
+        <h2>ZPH02 Sensor</h2>
+        <div class="value"><span>Duty Ratio</span><strong id="duty_ratio">--</strong></div>
+        <div class="value"><span>Estimated PM2.5</span><strong id="pm25">--</strong></div>
+        <div class="value"><span>VOC Grade</span><strong id="voc_grade">--</strong></div>
+        <div class="value"><span>AQI Category</span><strong id="aqi_category">--</strong></div>
+    </section>
+
+    <!-- INMP441 -->
+    <section class="card">
+        <h2>INMP441 Sound Sensor</h2>
+        <div class="value"><span>Sound Level</span><strong id="sound_db">--</strong></div>
+        <div class="value"><span>Noise Status</span><strong id="noise_status">--</strong></div>
+        <div class="value"><span>Threshold</span><strong id="sound_threshold">65 dB</strong></div>
+    </section>
+
+    <!-- Environmental AI -->
+    <section class="card">
+        <h2>Environmental AI Result</h2>
+        <p>The prediction from your environmental model.</p>
+        <div class="result" id="environment_prediction">
+            Waiting for ESP32 data...
+        </div>
+        <p class="note" id="updated_at">No data received yet.</p>
+    </section>
+
+    <!-- Image upload -->
+    <section class="card">
+        <h2>Traffic Density Detection</h2>
+        <p>Upload a road image from your computer or phone.</p>
+
+        <form id="uploadForm">
+            <input
+                type="file"
+                id="imageFile"
+                name="image"
+                accept="image/*"
+                required
+            >
+            <button type="submit" id="predictButton">
+                Predict Traffic Density
+            </button>
+        </form>
+
+        <img id="photoPreview" class="preview" hidden>
+
+        <div class="result" id="trafficResult">
+            Select an image to begin.
+        </div>
+    </section>
+
+    <!-- Camera -->
+    <section class="card">
+        <h2>ESP32-CAM</h2>
+        <p>Enter the camera IP address to view its stream.</p>
+
+        <input
+            type="text"
+            id="cameraIP"
+            placeholder="Example: 192.168.1.50"
+        >
+
+        <button type="button" id="connectCamera">
+            Show Camera Preview
+        </button>
+
+        <img id="cameraPreview" class="preview" hidden>
+
+        <p class="note">
+            The camera must run compatible web-server firmware
+            to provide a live stream.
+        </p>
+    </section>
+
+</div>
+
+<script>
+// Refresh environmental readings every 2 seconds.
+async function refreshEnvironment() {
+    try {
+        const response = await fetch("/api/environment");
+        const data = await response.json();
+
+        const fields = [
+            "temperature", "humidity", "pressure", "gas",
+            "duty_ratio", "pm25", "voc_grade", "aqi_category",
+            "environment_prediction", "sound_db", "noise_status",
+            "sound_threshold"
+        ];
+
+        fields.forEach(function (field) {
+            const element = document.getElementById(field);
+
+            if (element && data[field] !== null &&
+                data[field] !== undefined &&
+                data[field] !== "") {
+                element.textContent = data[field];
+            }
+        });
+
+        document.getElementById("updated_at").textContent =
+            data.updated_at
+                ? "Last update: " + data.updated_at
+                : "Waiting for environmental ESP32 data.";
+
+    } catch (error) {
+        console.log("Waiting for dashboard server.");
+    }
+}
+
+setInterval(refreshEnvironment, 2000);
+refreshEnvironment();
+
+// Show the selected photo.
+const imageFile = document.getElementById("imageFile");
+
+imageFile.addEventListener("change", function () {
+    const file = imageFile.files[0];
+
+    if (file) {
+        const preview = document.getElementById("photoPreview");
+        preview.src = URL.createObjectURL(file);
+        preview.hidden = false;
+    }
+});
+
+// Send the photo to Flask for CNN prediction.
+document.getElementById("uploadForm").addEventListener(
+    "submit", async function (event) {
+        event.preventDefault();
+
+        const file = imageFile.files[0];
+
+        if (!file) {
+            alert("Please select a photo.");
+            return;
+        }
+
+        const button = document.getElementById("predictButton");
+        const result = document.getElementById("trafficResult");
+
+        button.disabled = true;
+        result.textContent = "Analysing image...";
+
+        try {
+            const formData = new FormData();
+            formData.append("image", file);
+
+            const response = await fetch("/upload", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Prediction failed");
+            }
+
+            result.textContent =
+                "Prediction: " + data.prediction +
+                " | Confidence: " + data.confidence + "%";
+
+        } catch (error) {
+            result.textContent = "Error: " + error.message;
+        } finally {
+            button.disabled = false;
+        }
+    }
+);
+
+// Display standard ESP32 CameraWebServer stream.
+document.getElementById("connectCamera").addEventListener(
+    "click", function () {
+        let ip = document.getElementById("cameraIP").value.trim();
+
+        if (!ip) {
+            alert("Enter your ESP32-CAM IP address.");
+            return;
+        }
+
+        ip = ip.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+
+        const preview = document.getElementById("cameraPreview");
+        preview.src = "http://" + ip + ":81/stream";
+        preview.hidden = false;
+    }
+);
+</script>
+
+</body>
+</html>
+
