@@ -29,7 +29,7 @@ environment = {
     "abnormal_probability": None,
     "sound_db": None,
     "noise_status": None,
-    "sound_threshold": 65.0,
+    "sound_threshold": 85.0,
     "updated_at": None
 }
 
