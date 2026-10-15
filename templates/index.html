@@ -104,6 +104,11 @@ button {
     font-weight: bold;
 }
 
+button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 .preview {
     width: 100%;
     margin-top: 12px;
@@ -134,8 +139,8 @@ button {
             <span>PM2.5</span><strong id="aqi_pm25">--</strong>
         </div>
         <p class="note">
-            Estimated AQI from the latest PM2.5 reading. This is not
-            an official AQI measurement.
+            Estimated AQI from the latest PM2.5 reading.
+            This is not an official AQI measurement.
         </p>
     </section>
 
@@ -161,39 +166,61 @@ button {
         <div class="value"><span>Sound Level</span><strong id="sound_db">--</strong></div>
         <div class="value"><span>Noise Status</span><strong id="noise_status">--</strong></div>
         <div class="value"><span>Threshold</span><strong id="sound_threshold">65</strong></div>
-        <p class="note">Sound reading is relative unless calibrated against a sound-level meter.</p>
+        <p class="note">
+            Sound reading is relative unless calibrated against
+            a sound-level meter.
+        </p>
     </section>
 
     <section class="card">
         <h2>Environmental AI Result</h2>
-        <div class="result" id="environment_prediction">Waiting for ESP32 data...</div>
+        <div class="result" id="environment_prediction">
+            Waiting for ESP32 data...
+        </div>
         <div class="value">
             <span>Abnormal Probability</span>
             <strong id="abnormal_probability">--</strong>
         </div>
-        <p class="note" id="updated_at">No sensor update received yet.</p>
+        <p class="note" id="updated_at">
+            No sensor update received yet.
+        </p>
     </section>
 
     <section class="card">
         <h2>Traffic Density Detection</h2>
         <p>Choose a road image to classify traffic density.</p>
+
         <form id="uploadForm">
-            <input type="file" id="imageFile" name="image" accept="image/*" required>
-            <button type="submit" id="predictButton">Predict Traffic Density</button>
+            <input type="file" id="imageFile" name="image"
+                   accept="image/*" required>
+            <button type="submit" id="predictButton">
+                Predict Traffic Density
+            </button>
         </form>
-        <img id="photoPreview" class="preview" alt="Selected image" hidden>
-        <div class="result" id="trafficResult">Select an image to begin.</div>
+
+        <img id="photoPreview" class="preview"
+             alt="Selected image" hidden>
+
+        <div class="result" id="trafficResult">
+            Select an image to begin.
+        </div>
     </section>
 
     <section class="card">
         <h2>ESP32-CAM</h2>
         <p>Enter the camera's local IP address.</p>
-        <input type="text" id="cameraIP" placeholder="Example: 192.168.1.50">
-        <button type="button" id="connectCamera">Show Camera Preview</button>
-        <img id="cameraPreview" class="preview" alt="Camera stream" hidden>
+
+        <input type="text" id="cameraIP"
+               placeholder="Example: 192.168.1.50">
+
+        <button type="button" id="connectCamera">
+            Open Camera
+        </button>
+
         <p class="note">
-            Camera preview requires compatible camera firmware and network access.
-            A local camera stream may not load over an HTTPS dashboard.
+            This opens the camera's web page in a new tab.
+            Embedded live video requires a compatible stream
+            and secure network access.
         </p>
     </section>
 
@@ -207,9 +234,11 @@ function setValue(id, value, suffix = "") {
         $(id).textContent = "--";
         return;
     }
+
     $(id).textContent = String(value) + suffix;
 }
 
+/* Update environmental sensor dashboard */
 async function updateDashboard() {
     try {
         const response = await fetch("/api/environment", {
@@ -223,7 +252,8 @@ async function updateDashboard() {
 
         const data = await response.json();
 
-        $("connection").textContent = "Connected to dashboard server";
+        $("connection").textContent =
+            "Connected to dashboard server";
 
         setValue("temperature", data.temperature, " °C");
         setValue("humidity", data.humidity, " %");
@@ -239,14 +269,15 @@ async function updateDashboard() {
         setValue("aqi_pm25", data.pm25, " µg/m³");
         setValue("aqi_category", data.aqi_category);
 
-        if (data.aqi === null || data.aqi === undefined) {
-            $("aqi").textContent = "--";
-        } else {
-            $("aqi").textContent = data.aqi;
-        }
+        $("aqi").textContent =
+            data.aqi === null || data.aqi === undefined
+                ? "--"
+                : data.aqi;
 
-        const label = data.aqi_label || data.aqi_category ||
+        const label = data.aqi_label ||
+                      data.aqi_category ||
                       "Waiting for sensor data";
+
         $("aqi_label").textContent = label;
 
         const colors = {
@@ -259,21 +290,30 @@ async function updateDashboard() {
         };
 
         const selected = colors[label];
-        $("aqi").style.color = selected ? selected[0] : "#64748b";
-        $("aqi_label").style.color = selected ? selected[0] : "#334155";
-        $("aqi_label").style.background = selected ? selected[1] : "#e2e8f0";
+
+        $("aqi").style.color =
+            selected ? selected[0] : "#64748b";
+
+        $("aqi_label").style.color =
+            selected ? selected[0] : "#334155";
+
+        $("aqi_label").style.background =
+            selected ? selected[1] : "#e2e8f0";
 
         $("environment_prediction").textContent =
-            data.environment_prediction || "Waiting for ESP32 data...";
+            data.environment_prediction ||
+            "Waiting for ESP32 data...";
 
         if (data.abnormal_probability === null ||
             data.abnormal_probability === undefined) {
             $("abnormal_probability").textContent = "--";
         } else {
             let probability = Number(data.abnormal_probability);
+
             if (probability >= 0 && probability <= 1) {
                 probability *= 100;
             }
+
             $("abnormal_probability").textContent =
                 probability.toFixed(2) + "%";
         }
@@ -291,9 +331,10 @@ async function updateDashboard() {
 updateDashboard();
 setInterval(updateDashboard, 2000);
 
-/* Traffic image prediction */
+/* Traffic image preview */
 $("imageFile").addEventListener("change", function() {
     const file = this.files[0];
+
     if (!file) return;
 
     $("photoPreview").src = URL.createObjectURL(file);
@@ -301,12 +342,15 @@ $("imageFile").addEventListener("change", function() {
     $("trafficResult").textContent = "Image selected.";
 });
 
+/* Traffic prediction */
 $("uploadForm").addEventListener("submit", async function(event) {
     event.preventDefault();
 
     const file = $("imageFile").files[0];
+
     if (!file) {
-        $("trafficResult").textContent = "Please select an image.";
+        $("trafficResult").textContent =
+            "Please select an image.";
         return;
     }
 
@@ -334,15 +378,17 @@ $("uploadForm").addEventListener("submit", async function(event) {
             (Number(result.confidence) * 100).toFixed(2) + "%";
 
     } catch (error) {
-        $("trafficResult").textContent = "Error: " + error.message;
+        $("trafficResult").textContent =
+            "Error: " + error.message;
     } finally {
         $("predictButton").disabled = false;
     }
 });
 
-/* ESP32-CAM preview */
+/* Open ESP32-CAM page */
 $("connectCamera").addEventListener("click", function() {
     let ip = $("cameraIP").value.trim();
+
     ip = ip.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
     if (!ip) {
@@ -350,8 +396,12 @@ $("connectCamera").addEventListener("click", function() {
         return;
     }
 
-    $("cameraPreview").src = "http://" + ip + ":81/stream";
-    $("cameraPreview").hidden = false;
+    if (/[/?#\s]/.test(ip)) {
+        alert("Enter only the camera IP address, such as 192.168.1.50");
+        return;
+    }
+
+    window.open("http://" + ip, "_blank");
 });
 </script>
 
