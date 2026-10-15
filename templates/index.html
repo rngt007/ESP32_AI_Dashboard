@@ -6,65 +6,354 @@
 <title>ESP32 Edge AI Dashboard</title>
 
 <style>
-*{box-sizing:border-box}
-body{font-family:Arial,sans-serif;background:#eef2f7;margin:0;padding:20px;color:#1e293b}
-header{background:#17365d;color:white;padding:22px;border-radius:12px;margin-bottom:20px}
-header h1{margin:0 0 8px}
-header p{margin-bottom:0}
-h2{color:#17365d;font-size:20px}
-.dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
-.card{background:white;padding:20px;border-radius:12px;box-shadow:0 3px 12px #0001;min-width:0}
-.value{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #e2e8f0}
-.value strong{text-align:right;overflow-wrap:anywhere}
-input,button{width:100%;padding:11px;margin-top:10px;border-radius:7px;font-size:15px}
-input{border:1px solid #cbd5e1}
-button{background:#1769aa;color:white;border:none;cursor:pointer;font-weight:bold}
-button:disabled{opacity:.6;cursor:wait}
-.result{margin-top:15px;padding:12px;background:#edf4ff;border-radius:8px;overflow-wrap:anywhere}
-.preview{width:100%;margin-top:12px;border-radius:8px}
-.note{color:#64748b;font-size:13px;line-height:1.5}
-.aqi-card{text-align:center}
-.aqi-number{font-size:58px;font-weight:bold;margin:16px 0 8px;color:#64748b}
-.aqi-label{display:inline-block;padding:9px 16px;border-radius:20px;background:#e2e8f0;color:#334155;font-weight:bold;margin-bottom:12px}
-.status-normal{color:#166534;font-weight:bold}
-.status-abnormal{color:#b91c1c;font-weight:bold}
-@media(max-width:480px){body{padding:12px}header,.card{padding:16px}.aqi-number{font-size:48px}}
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 18px;
+    font-family: Arial, sans-serif;
+    background: #eef2f7;
+    color: #1e293b;
+}
+
+header {
+    background: #17365d;
+    color: white;
+    padding: 22px;
+    border-radius: 12px;
+    margin-bottom: 18px;
+}
+
+header h1 { margin-top: 0; }
+
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+    gap: 16px;
+}
+
+.card {
+    background: white;
+    padding: 18px;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px #0001;
+    min-width: 0;
+}
+
+h2 { color: #17365d; font-size: 19px; }
+
+.value {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.value strong {
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.aqi-number {
+    font-size: 56px;
+    font-weight: bold;
+    text-align: center;
+    margin: 20px 0 10px;
+}
+
+.aqi-label {
+    display: block;
+    text-align: center;
+    border-radius: 20px;
+    padding: 10px;
+    margin-bottom: 14px;
+    background: #e2e8f0;
+    font-weight: bold;
+}
+
+.note {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #64748b;
+}
+
+.result {
+    background: #edf4ff;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+    overflow-wrap: anywhere;
+}
+
+input, button {
+    width: 100%;
+    padding: 11px;
+    margin-top: 10px;
+    border-radius: 7px;
+    font-size: 15px;
+}
+
+input { border: 1px solid #cbd5e1; }
+
+button {
+    background: #1769aa;
+    color: white;
+    border: 0;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.preview {
+    width: 100%;
+    margin-top: 12px;
+    border-radius: 8px;
+}
+
+@media (max-width: 480px) {
+    body { padding: 10px; }
+}
 </style>
 </head>
 
 <body>
+
 <header>
-<h1>ESP32 Edge AI Dashboard</h1>
-<p>Environmental Monitoring and Traffic Density Detection</p>
+    <h1>ESP32 Edge AI Dashboard</h1>
+    <p>Environmental Monitoring and Traffic Density Detection</p>
+    <div id="connection">Connecting to server...</div>
 </header>
 
 <div class="dashboard">
 
-<section class="card aqi-card">
-<h2>Air Quality Index (AQI)</h2>
-<div class="aqi-number" id="aqi">--</div>
-<div class="aqi-label" id="aqi_label">Waiting for sensor data</div>
-<div class="value"><span>PM2.5</span><strong id="aqi_pm25">--</strong></div>
-<p class="note">Estimated US EPA-style AQI based on the latest PM2.5 reading. This is an estimate, not an official AQI measurement.</p>
-</section>
+    <section class="card">
+        <h2>Air Quality Index (AQI)</h2>
+        <div class="aqi-number" id="aqi">--</div>
+        <div class="aqi-label" id="aqi_label">Waiting for sensor data</div>
+        <div class="value">
+            <span>PM2.5</span><strong id="aqi_pm25">--</strong>
+        </div>
+        <p class="note">
+            Estimated AQI from the latest PM2.5 reading. This is not
+            an official AQI measurement.
+        </p>
+    </section>
 
-<section class="card">
-<h2>BME680 Sensor</h2>
-<div class="value"><span>Temperature</span><strong id="temperature">--</strong></div>
-<div class="value"><span>Humidity</span><strong id="humidity">--</strong></div>
-<div class="value"><span>Pressure</span><strong id="pressure">--</strong></div>
-<div class="value"><span>Gas Resistance</span><strong id="gas">--</strong></div>
-</section>
+    <section class="card">
+        <h2>BME680 Sensor</h2>
+        <div class="value"><span>Temperature</span><strong id="temperature">--</strong></div>
+        <div class="value"><span>Humidity</span><strong id="humidity">--</strong></div>
+        <div class="value"><span>Pressure</span><strong id="pressure">--</strong></div>
+        <div class="value"><span>Gas Resistance</span><strong id="gas">--</strong></div>
+    </section>
 
-<section class="card">
-<h2>ZPH02 Sensor</h2>
-<div class="value"><span>Duty Ratio</span><strong id="duty_ratio">--</strong></div>
-<div class="value"><span>Estimated PM2.5</span><strong id="pm25">--</strong></div>
-<div class="value"><span>VOC Level</span><strong id="voc_level">--</strong></div>
-<div class="value"><span>VOC Grade</span><strong id="voc_grade">--</strong></div>
-<div class="value"><span>AQI Category</span><strong id="aqi_category">--</strong></div>
-</section>
+    <section class="card">
+        <h2>ZPH02 Sensor</h2>
+        <div class="value"><span>Duty Ratio</span><strong id="duty_ratio">--</strong></div>
+        <div class="value"><span>Estimated PM2.5</span><strong id="pm25">--</strong></div>
+        <div class="value"><span>VOC Level</span><strong id="voc_level">--</strong></div>
+        <div class="value"><span>VOC Grade</span><strong id="voc_grade">--</strong></div>
+        <div class="value"><span>AQI Category</span><strong id="aqi_category">--</strong></div>
+    </section>
 
-<section class="card">
-<h2>INMP441 Sound Sensor</h2>
-<div class="value"><span>Sound
+    <section class="card">
+        <h2>INMP441 Sound Sensor</h2>
+        <div class="value"><span>Sound Level</span><strong id="sound_db">--</strong></div>
+        <div class="value"><span>Noise Status</span><strong id="noise_status">--</strong></div>
+        <div class="value"><span>Threshold</span><strong id="sound_threshold">65</strong></div>
+        <p class="note">Sound reading is relative unless calibrated against a sound-level meter.</p>
+    </section>
+
+    <section class="card">
+        <h2>Environmental AI Result</h2>
+        <div class="result" id="environment_prediction">Waiting for ESP32 data...</div>
+        <div class="value">
+            <span>Abnormal Probability</span>
+            <strong id="abnormal_probability">--</strong>
+        </div>
+        <p class="note" id="updated_at">No sensor update received yet.</p>
+    </section>
+
+    <section class="card">
+        <h2>Traffic Density Detection</h2>
+        <p>Choose a road image to classify traffic density.</p>
+        <form id="uploadForm">
+            <input type="file" id="imageFile" name="image" accept="image/*" required>
+            <button type="submit" id="predictButton">Predict Traffic Density</button>
+        </form>
+        <img id="photoPreview" class="preview" alt="Selected image" hidden>
+        <div class="result" id="trafficResult">Select an image to begin.</div>
+    </section>
+
+    <section class="card">
+        <h2>ESP32-CAM</h2>
+        <p>Enter the camera's local IP address.</p>
+        <input type="text" id="cameraIP" placeholder="Example: 192.168.1.50">
+        <button type="button" id="connectCamera">Show Camera Preview</button>
+        <img id="cameraPreview" class="preview" alt="Camera stream" hidden>
+        <p class="note">
+            Camera preview requires compatible camera firmware and network access.
+            A local camera stream may not load over an HTTPS dashboard.
+        </p>
+    </section>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function setValue(id, value, suffix = "") {
+    if (value === null || value === undefined || value === "") {
+        $(id).textContent = "--";
+        return;
+    }
+    $(id).textContent = String(value) + suffix;
+}
+
+async function updateDashboard() {
+    try {
+        const response = await fetch("/api/environment", {
+            method: "GET",
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error("API returned HTTP " + response.status);
+        }
+
+        const data = await response.json();
+
+        $("connection").textContent = "Connected to dashboard server";
+
+        setValue("temperature", data.temperature, " °C");
+        setValue("humidity", data.humidity, " %");
+        setValue("pressure", data.pressure, " hPa");
+        setValue("gas", data.gas, " Ω");
+        setValue("duty_ratio", data.duty_ratio);
+        setValue("pm25", data.pm25, " µg/m³");
+        setValue("voc_level", data.voc_level);
+        setValue("voc_grade", data.voc_grade);
+        setValue("sound_db", data.sound_db);
+        setValue("noise_status", data.noise_status);
+        setValue("sound_threshold", data.sound_threshold);
+        setValue("aqi_pm25", data.pm25, " µg/m³");
+        setValue("aqi_category", data.aqi_category);
+
+        if (data.aqi === null || data.aqi === undefined) {
+            $("aqi").textContent = "--";
+        } else {
+            $("aqi").textContent = data.aqi;
+        }
+
+        const label = data.aqi_label || data.aqi_category ||
+                      "Waiting for sensor data";
+        $("aqi_label").textContent = label;
+
+        const colors = {
+            "Good": ["#166534", "#dcfce7"],
+            "Moderate": ["#854d0e", "#fef3c7"],
+            "Unhealthy for Sensitive Groups": ["#9a3412", "#ffedd5"],
+            "Unhealthy": ["#991b1b", "#fee2e2"],
+            "Very Unhealthy": ["#6b21a8", "#f3e8ff"],
+            "Hazardous": ["#881337", "#fce7f3"]
+        };
+
+        const selected = colors[label];
+        $("aqi").style.color = selected ? selected[0] : "#64748b";
+        $("aqi_label").style.color = selected ? selected[0] : "#334155";
+        $("aqi_label").style.background = selected ? selected[1] : "#e2e8f0";
+
+        $("environment_prediction").textContent =
+            data.environment_prediction || "Waiting for ESP32 data...";
+
+        if (data.abnormal_probability === null ||
+            data.abnormal_probability === undefined) {
+            $("abnormal_probability").textContent = "--";
+        } else {
+            let probability = Number(data.abnormal_probability);
+            if (probability >= 0 && probability <= 1) {
+                probability *= 100;
+            }
+            $("abnormal_probability").textContent =
+                probability.toFixed(2) + "%";
+        }
+
+        $("updated_at").textContent = data.updated_at
+            ? "Last sensor update: " + data.updated_at
+            : "No sensor update received yet.";
+
+    } catch (error) {
+        $("connection").textContent =
+            "Dashboard API error: " + error.message;
+    }
+}
+
+updateDashboard();
+setInterval(updateDashboard, 2000);
+
+/* Traffic image prediction */
+$("imageFile").addEventListener("change", function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    $("photoPreview").src = URL.createObjectURL(file);
+    $("photoPreview").hidden = false;
+    $("trafficResult").textContent = "Image selected.";
+});
+
+$("uploadForm").addEventListener("submit", async function(event) {
+    event.preventDefault();
+
+    const file = $("imageFile").files[0];
+    if (!file) {
+        $("trafficResult").textContent = "Please select an image.";
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    $("predictButton").disabled = true;
+    $("trafficResult").textContent = "Analyzing image...";
+
+    try {
+        const response = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "Prediction failed");
+        }
+
+        $("trafficResult").textContent =
+            "Prediction: " + result.prediction +
+            " | Confidence: " +
+            (Number(result.confidence) * 100).toFixed(2) + "%";
+
+    } catch (error) {
+        $("trafficResult").textContent = "Error: " + error.message;
+    } finally {
+        $("predictButton").disabled = false;
+    }
+});
+
+/* ESP32-CAM preview */
+$("connectCamera").addEventListener("click", function() {
+    let ip = $("cameraIP").value.trim();
+    ip = ip.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+
+    if (!ip) {
+        alert("Enter the ESP32-CAM IP address first.");
+        return;
+    }
+
+    $("cameraPreview").src = "http://" + ip + ":81/stream";
+    $("cameraPreview").hidden = false;
+});
+</script>
+
+</body>
+</html>
