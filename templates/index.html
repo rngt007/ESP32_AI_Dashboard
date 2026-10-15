@@ -110,9 +110,19 @@ button:disabled {
 }
 
 .preview {
+    display: block;
     width: 100%;
     margin-top: 12px;
     border-radius: 8px;
+    background: #e2e8f0;
+    min-height: 0;
+}
+
+.camera-status {
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 10px;
+    color: #475569;
 }
 
 @media (max-width: 480px) {
@@ -131,19 +141,24 @@ button:disabled {
 
 <div class="dashboard">
 
+    <!-- AQI -->
     <section class="card">
         <h2>Air Quality Index (AQI)</h2>
         <div class="aqi-number" id="aqi">--</div>
         <div class="aqi-label" id="aqi_label">Waiting for sensor data</div>
+
         <div class="value">
-            <span>PM2.5</span><strong id="aqi_pm25">--</strong>
+            <span>PM2.5</span>
+            <strong id="aqi_pm25">--</strong>
         </div>
+
         <p class="note">
             Estimated AQI from the latest PM2.5 reading.
             This is not an official AQI measurement.
         </p>
     </section>
 
+    <!-- BME680 -->
     <section class="card">
         <h2>BME680 Sensor</h2>
         <div class="value"><span>Temperature</span><strong id="temperature">--</strong></div>
@@ -152,6 +167,7 @@ button:disabled {
         <div class="value"><span>Gas Resistance</span><strong id="gas">--</strong></div>
     </section>
 
+    <!-- ZPH02 -->
     <section class="card">
         <h2>ZPH02 Sensor</h2>
         <div class="value"><span>Duty Ratio</span><strong id="duty_ratio">--</strong></div>
@@ -161,6 +177,7 @@ button:disabled {
         <div class="value"><span>AQI Category</span><strong id="aqi_category">--</strong></div>
     </section>
 
+    <!-- INMP441 -->
     <section class="card">
         <h2>INMP441 Sound Sensor</h2>
         <div class="value"><span>Sound Level</span><strong id="sound_db">--</strong></div>
@@ -172,20 +189,25 @@ button:disabled {
         </p>
     </section>
 
+    <!-- Environmental AI -->
     <section class="card">
         <h2>Environmental AI Result</h2>
+
         <div class="result" id="environment_prediction">
             Waiting for ESP32 data...
         </div>
+
         <div class="value">
             <span>Abnormal Probability</span>
             <strong id="abnormal_probability">--</strong>
         </div>
+
         <p class="note" id="updated_at">
             No sensor update received yet.
         </p>
     </section>
 
+    <!-- Manual traffic prediction -->
     <section class="card">
         <h2>Traffic Density Detection</h2>
         <p>Choose a road image to classify traffic density.</p>
@@ -193,6 +215,7 @@ button:disabled {
         <form id="uploadForm">
             <input type="file" id="imageFile" name="image"
                    accept="image/*" required>
+
             <button type="submit" id="predictButton">
                 Predict Traffic Density
             </button>
@@ -206,21 +229,39 @@ button:disabled {
         </div>
     </section>
 
+    <!-- Live camera and automatic traffic prediction -->
     <section class="card">
-        <h2>ESP32-CAM</h2>
-        <p>Enter the camera's local IP address.</p>
+        <h2>Live Traffic Camera</h2>
 
-        <input type="text" id="cameraIP"
+        <p>Enter the ESP32-CAM IP address.</p>
+
+        <input type="text"
+               id="cameraIP"
+               value="192.168.1.50"
                placeholder="Example: 192.168.1.50">
 
         <button type="button" id="connectCamera">
-            Open Camera
+            Connect Camera
         </button>
 
-        <p class="note">
-            This opens the camera's web page in a new tab.
-            Embedded live video requires a compatible stream
-            and secure network access.
+        <img id="liveCamera"
+             class="preview"
+             alt="Live ESP32-CAM video"
+             hidden>
+
+        <canvas id="trafficCanvas"
+                width="160"
+                height="160"
+                hidden></canvas>
+
+        <div class="result" id="liveTrafficResult">
+            Camera disconnected.
+        </div>
+
+        <p class="camera-status" id="cameraNote">
+            Connect the camera to begin.
+            Automatic traffic prediction runs every 3 seconds
+            when the browser can capture camera frames.
         </p>
     </section>
 
@@ -229,16 +270,19 @@ button:disabled {
 <script>
 const $ = id => document.getElementById(id);
 
+/* Display sensor values */
 function setValue(id, value, suffix = "") {
+    const element = $(id);
+
     if (value === null || value === undefined || value === "") {
-        $(id).textContent = "--";
+        element.textContent = "--";
         return;
     }
 
-    $(id).textContent = String(value) + suffix;
+    element.textContent = String(value) + suffix;
 }
 
-/* Update environmental sensor dashboard */
+/* Environmental sensor dashboard */
 async function updateDashboard() {
     try {
         const response = await fetch("/api/environment", {
@@ -252,13 +296,13 @@ async function updateDashboard() {
 
         const data = await response.json();
 
-        $("connection").textContent =
-            "Connected to dashboard server";
+        $("connection").textContent = "Connected to dashboard server";
 
         setValue("temperature", data.temperature, " °C");
         setValue("humidity", data.humidity, " %");
         setValue("pressure", data.pressure, " hPa");
         setValue("gas", data.gas, " Ω");
+
         setValue("duty_ratio", data.duty_ratio);
         setValue("pm25", data.pm25, " µg/m³");
         setValue("voc_level", data.voc_level);
@@ -266,6 +310,7 @@ async function updateDashboard() {
         setValue("sound_db", data.sound_db);
         setValue("noise_status", data.noise_status);
         setValue("sound_threshold", data.sound_threshold);
+
         setValue("aqi_pm25", data.pm25, " µg/m³");
         setValue("aqi_category", data.aqi_category);
 
@@ -291,18 +336,13 @@ async function updateDashboard() {
 
         const selected = colors[label];
 
-        $("aqi").style.color =
-            selected ? selected[0] : "#64748b";
-
-        $("aqi_label").style.color =
-            selected ? selected[0] : "#334155";
-
+        $("aqi").style.color = selected ? selected[0] : "#64748b";
+        $("aqi_label").style.color = selected ? selected[0] : "#334155";
         $("aqi_label").style.background =
             selected ? selected[1] : "#e2e8f0";
 
         $("environment_prediction").textContent =
-            data.environment_prediction ||
-            "Waiting for ESP32 data...";
+            data.environment_prediction || "Waiting for ESP32 data...";
 
         if (data.abnormal_probability === null ||
             data.abnormal_probability === undefined) {
@@ -331,7 +371,8 @@ async function updateDashboard() {
 updateDashboard();
 setInterval(updateDashboard, 2000);
 
-/* Traffic image preview */
+
+/* Manual image preview */
 $("imageFile").addEventListener("change", function() {
     const file = this.files[0];
 
@@ -342,15 +383,15 @@ $("imageFile").addEventListener("change", function() {
     $("trafficResult").textContent = "Image selected.";
 });
 
-/* Traffic prediction */
+
+/* Manual traffic prediction */
 $("uploadForm").addEventListener("submit", async function(event) {
     event.preventDefault();
 
     const file = $("imageFile").files[0];
 
     if (!file) {
-        $("trafficResult").textContent =
-            "Please select an image.";
+        $("trafficResult").textContent = "Please select an image.";
         return;
     }
 
@@ -372,37 +413,158 @@ $("uploadForm").addEventListener("submit", async function(event) {
             throw new Error(result.error || "Prediction failed");
         }
 
+        const confidence = Number(result.confidence);
+
         $("trafficResult").textContent =
             "Prediction: " + result.prediction +
             " | Confidence: " +
-            (Number(result.confidence) * 100).toFixed(2) + "%";
+            (Number.isFinite(confidence)
+                ? (confidence <= 1 ? confidence * 100 : confidence).toFixed(2) + "%"
+                : "--");
 
     } catch (error) {
-        $("trafficResult").textContent =
-            "Error: " + error.message;
+        $("trafficResult").textContent = "Error: " + error.message;
     } finally {
         $("predictButton").disabled = false;
     }
 });
 
-/* Open ESP32-CAM page */
+
+/* Live ESP32-CAM */
+let cameraTimer = null;
+let cameraBusy = false;
+let cameraConnected = false;
+
 $("connectCamera").addEventListener("click", function() {
     let ip = $("cameraIP").value.trim();
 
-    ip = ip.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    ip = ip.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
 
-    if (!ip) {
-        alert("Enter the ESP32-CAM IP address first.");
+    if (!ip || /[/?#\s]/.test(ip)) {
+        alert("Enter only the camera IP, for example 192.168.1.50");
         return;
     }
 
-    if (/[/?#\s]/.test(ip)) {
-        alert("Enter only the camera IP address, such as 192.168.1.50");
-        return;
+    if (cameraTimer) {
+        clearInterval(cameraTimer);
+        cameraTimer = null;
     }
 
-    window.open("http://" + ip, "_blank");
+    cameraConnected = false;
+    cameraBusy = false;
+
+    $("liveTrafficResult").textContent = "Connecting to camera...";
+    $("cameraNote").textContent = "Loading camera stream...";
+    $("liveCamera").hidden = false;
+
+    /*
+      The supplied ESP32-CAM code serves MJPEG at its root URL.
+      It uses port 80, not port 81.
+    */
+    $("liveCamera").onload = function() {
+        cameraConnected = true;
+        $("liveTrafficResult").textContent =
+            "Camera image received. Checking prediction access...";
+    };
+
+    $("liveCamera").onerror = function() {
+        cameraConnected = false;
+        $("liveTrafficResult").textContent =
+            "Camera stream failed to load. Check the IP and network.";
+        $("cameraNote").textContent =
+            "The camera must be reachable from the device viewing this dashboard.";
+    };
+
+    $("liveCamera").src = "http://" + ip + "/";
+
+    /*
+      Attempt a traffic prediction every 3 seconds.
+      Browser CORS/mixed-content restrictions may prevent
+      reading frames from an HTTP camera on an HTTPS dashboard.
+    */
+    cameraTimer = setInterval(predictLiveTraffic, 3000);
 });
+
+
+/* Capture a camera frame and send it to the existing /upload endpoint */
+async function predictLiveTraffic() {
+    if (cameraBusy || !$("liveCamera").src) return;
+
+    const camera = $("liveCamera");
+
+    if (!camera.naturalWidth || !camera.naturalHeight) return;
+
+    cameraBusy = true;
+
+    try {
+        const canvas = $("trafficCanvas");
+        const context = canvas.getContext("2d");
+
+        canvas.width = 160;
+        canvas.height = 160;
+
+        /*
+          This step can fail if the browser blocks cross-origin
+          canvas access to the ESP32-CAM stream.
+        */
+        context.drawImage(camera, 0, 0, 160, 160);
+
+        const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob(
+                imageBlob => {
+                    if (imageBlob) {
+                        resolve(imageBlob);
+                    } else {
+                        reject(new Error("Could not capture camera frame."));
+                    }
+                },
+                "image/jpeg",
+                0.85
+            );
+        });
+
+        const formData = new FormData();
+        formData.append("image", blob, "live_traffic.jpg");
+
+        const response = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "Prediction request failed.");
+        }
+
+        if (result.error) {
+            throw new Error(result.error);
+        }
+
+        const confidence = Number(result.confidence);
+
+        const confidenceText = Number.isFinite(confidence)
+            ? (confidence <= 1 ? confidence * 100 : confidence).toFixed(2) + "%"
+            : "--";
+
+        $("liveTrafficResult").textContent =
+            "Traffic: " + (result.prediction || "Unknown") +
+            " | Confidence: " + confidenceText;
+
+        $("cameraNote").textContent =
+            "Last prediction: " + new Date().toLocaleTimeString();
+
+    } catch (error) {
+        $("liveTrafficResult").textContent =
+            "Automatic prediction unavailable: " + error.message;
+
+        $("cameraNote").textContent =
+            "If video appears but prediction fails, the browser may be blocking frame capture because of HTTPS/CORS security. Secure camera access may be required.";
+
+    } finally {
+        cameraBusy = false;
+    }
+}
 </script>
 
 </body>
