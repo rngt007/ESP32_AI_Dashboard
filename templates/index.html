@@ -183,6 +183,7 @@ button:disabled {
         <div class="value"><span>Sound Level</span><strong id="sound_db">--</strong></div>
         <div class="value"><span>Noise Status</span><strong id="noise_status">--</strong></div>
         <div class="value"><span>Threshold</span><strong id="sound_threshold">80</strong></div>
+
         <p class="note">
             Sound reading is relative unless calibrated against
             a sound-level meter.
@@ -222,46 +223,34 @@ button:disabled {
         </form>
 
         <img id="photoPreview" class="preview"
-             alt="Selected image" hidden>
+             alt="Selected road image" hidden>
 
         <div class="result" id="trafficResult">
             Select an image to begin.
         </div>
     </section>
 
-    <!-- Live camera and automatic traffic prediction -->
+    <!-- Automatic ESP32-CAM traffic prediction -->
     <section class="card">
         <h2>Live Traffic Camera</h2>
 
-        <p>Enter the ESP32-CAM IP address.</p>
-
-        <input type="text"
-               id="cameraIP"
-               value="192.168.1.50"
-               placeholder="Example: 192.168.1.50">
-
-        <button type="button" id="connectCamera">
-            Connect Camera
-        </button>
+        <p>
+            Camera images are received through the Render server.
+            The AI analyzes the latest received image.
+        </p>
 
         <img id="liveCamera"
              class="preview"
-             alt="Live ESP32-CAM video"
+             alt="Latest ESP32-CAM image"
              hidden>
 
-        <canvas id="trafficCanvas"
-                width="160"
-                height="160"
-                hidden></canvas>
-
         <div class="result" id="liveTrafficResult">
-            Camera disconnected.
+            Waiting for ESP32-CAM...
         </div>
 
         <p class="camera-status" id="cameraNote">
-            Connect the camera to begin.
-            Automatic traffic prediction runs every 3 seconds
-            when the browser can capture camera frames.
+            The ESP32-CAM must send JPEG frames to the Render
+            server before images and predictions can appear here.
         </p>
     </section>
 
@@ -270,7 +259,7 @@ button:disabled {
 <script>
 const $ = id => document.getElementById(id);
 
-/* Display sensor values */
+/* Display values safely */
 function setValue(id, value, suffix = "") {
     const element = $(id);
 
@@ -291,7 +280,7 @@ async function updateDashboard() {
         });
 
         if (!response.ok) {
-            throw new Error("API returned HTTP " + response.status);
+            throw new Error("HTTP " + response.status);
         }
 
         const data = await response.json();
@@ -319,9 +308,10 @@ async function updateDashboard() {
                 ? "--"
                 : data.aqi;
 
-        const label = data.aqi_label ||
-                      data.aqi_category ||
-                      "Waiting for sensor data";
+        const label =
+            data.aqi_label ||
+            data.aqi_category ||
+            "Waiting for sensor data";
 
         $("aqi_label").textContent = label;
 
@@ -344,8 +334,10 @@ async function updateDashboard() {
         $("environment_prediction").textContent =
             data.environment_prediction || "Waiting for ESP32 data...";
 
-        if (data.abnormal_probability === null ||
-            data.abnormal_probability === undefined) {
+        if (
+            data.abnormal_probability === null ||
+            data.abnormal_probability === undefined
+        ) {
             $("abnormal_probability").textContent = "--";
         } else {
             let probability = Number(data.abnormal_probability);
@@ -418,9 +410,15 @@ $("uploadForm").addEventListener("submit", async function(event) {
         $("trafficResult").textContent =
             "Prediction: " + result.prediction +
             " | Confidence: " +
-            (Number.isFinite(confidence)
-                ? (confidence <= 1 ? confidence * 100 : confidence).toFixed(2) + "%"
-                : "--");
+            (
+                Number.isFinite(confidence)
+                    ? (
+                        confidence <= 1
+                            ? confidence * 100
+                            : confidence
+                    ).toFixed(2) + "%"
+                    : "--"
+            );
 
     } catch (error) {
         $("trafficResult").textContent = "Error: " + error.message;
@@ -430,141 +428,103 @@ $("uploadForm").addEventListener("submit", async function(event) {
 });
 
 
-/* Live ESP32-CAM */
-let cameraTimer = null;
+/* Automatic ESP32-CAM traffic prediction via Render */
 let cameraBusy = false;
-let cameraConnected = false;
+let lastCameraTimestamp = null;
 
-$("connectCamera").addEventListener("click", function() {
-    let ip = $("cameraIP").value.trim();
-
-    ip = ip.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-
-    if (!ip || /[/?#\s]/.test(ip)) {
-        alert("Enter only the camera IP, for example 192.168.1.50");
-        return;
-    }
-
-    if (cameraTimer) {
-        clearInterval(cameraTimer);
-        cameraTimer = null;
-    }
-
-    cameraConnected = false;
-    cameraBusy = false;
-
-    $("liveTrafficResult").textContent = "Connecting to camera...";
-    $("cameraNote").textContent = "Loading camera stream...";
-    $("liveCamera").hidden = false;
-
-    /*
-      The supplied ESP32-CAM code serves MJPEG at its root URL.
-      It uses port 80, not port 81.
-    */
-    $("liveCamera").onload = function() {
-        cameraConnected = true;
-        $("liveTrafficResult").textContent =
-            "Camera image received. Checking prediction access...";
-    };
-
-    $("liveCamera").onerror = function() {
-        cameraConnected = false;
-        $("liveTrafficResult").textContent =
-            "Camera stream failed to load. Check the IP and network.";
-        $("cameraNote").textContent =
-            "The camera must be reachable from the device viewing this dashboard.";
-    };
-
-    $("liveCamera").src = "http://" + ip + "/";
-
-    /*
-      Attempt a traffic prediction every 3 seconds.
-      Browser CORS/mixed-content restrictions may prevent
-      reading frames from an HTTP camera on an HTTPS dashboard.
-    */
-    cameraTimer = setInterval(predictLiveTraffic, 3000);
-});
-
-
-/* Capture a camera frame and send it to the existing /upload endpoint */
-async function predictLiveTraffic() {
-    if (cameraBusy || !$("liveCamera").src) return;
-
-    const camera = $("liveCamera");
-
-    if (!camera.naturalWidth || !camera.naturalHeight) return;
+async function updateLiveCamera() {
+    if (cameraBusy) return;
 
     cameraBusy = true;
 
     try {
-        const canvas = $("trafficCanvas");
-        const context = canvas.getContext("2d");
+        /*
+         * Ask Render whether the ESP32-CAM has sent a recent frame.
+         */
+        const statusResponse = await fetch("/api/camera/status", {
+            cache: "no-store"
+        });
 
-        canvas.width = 160;
-        canvas.height = 160;
+        if (!statusResponse.ok) {
+            throw new Error("Camera status HTTP " + statusResponse.status);
+        }
+
+        const status = await statusResponse.json();
+
+        if (!status.connected) {
+            $("liveTrafficResult").textContent =
+                "Waiting for ESP32-CAM frames...";
+
+            $("cameraNote").textContent =
+                "Check that the camera is powered, connected to the internet, " +
+                "and sending frames to /api/camera/frame.";
+
+            $("liveCamera").hidden = true;
+            lastCameraTimestamp = null;
+            return;
+        }
 
         /*
-          This step can fail if the browser blocks cross-origin
-          canvas access to the ESP32-CAM stream.
-        */
-        context.drawImage(camera, 0, 0, 160, 160);
+         * The server already ran the traffic AI on the received frame.
+         * Display its result rather than running the model a second time.
+         */
+        const prediction = status.prediction || {};
 
-        const blob = await new Promise((resolve, reject) => {
-            canvas.toBlob(
-                imageBlob => {
-                    if (imageBlob) {
-                        resolve(imageBlob);
-                    } else {
-                        reject(new Error("Could not capture camera frame."));
-                    }
-                },
-                "image/jpeg",
-                0.85
-            );
-        });
+        const confidenceValue = Number(prediction.confidence);
 
-        const formData = new FormData();
-        formData.append("image", blob, "live_traffic.jpg");
+        let confidenceText = "--";
 
-        const response = await fetch("/upload", {
-            method: "POST",
-            body: formData
-        });
+        if (Number.isFinite(confidenceValue)) {
+            const confidencePercent =
+                confidenceValue <= 1
+                    ? confidenceValue * 100
+                    : confidenceValue;
 
-        const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.error || "Prediction request failed.");
+            confidenceText = confidencePercent.toFixed(2) + "%";
         }
-
-        if (result.error) {
-            throw new Error(result.error);
-        }
-
-        const confidence = Number(result.confidence);
-
-        const confidenceText = Number.isFinite(confidence)
-            ? (confidence <= 1 ? confidence * 100 : confidence).toFixed(2) + "%"
-            : "--";
 
         $("liveTrafficResult").textContent =
-            "Traffic: " + (result.prediction || "Unknown") +
+            "Traffic: " +
+            (prediction.prediction || "Prediction unavailable") +
             " | Confidence: " + confidenceText;
 
+        /*
+         * Reload the image from Render, not from the camera's private IP.
+         */
+        const timestamp =
+            status.timestamp ||
+            status.updated_at ||
+            Date.now();
+
+        if (timestamp !== lastCameraTimestamp) {
+            lastCameraTimestamp = timestamp;
+
+            $("liveCamera").src =
+                "/api/camera/latest.jpg?t=" +
+                encodeURIComponent(timestamp);
+
+            $("liveCamera").hidden = false;
+        }
+
         $("cameraNote").textContent =
-            "Last prediction: " + new Date().toLocaleTimeString();
+            "Camera connected. Last frame: " +
+            (status.timestamp
+                ? new Date(status.timestamp * 1000).toLocaleTimeString()
+                : "recently received");
 
     } catch (error) {
         $("liveTrafficResult").textContent =
-            "Automatic prediction unavailable: " + error.message;
+            "Camera error: " + error.message;
 
         $("cameraNote").textContent =
-            "If video appears but prediction fails, the browser may be blocking frame capture because of HTTPS/CORS security. Secure camera access may be required.";
-
+            "Unable to read the camera API. Check the Render deployment and app.py.";
     } finally {
         cameraBusy = false;
     }
 }
+
+updateLiveCamera();
+setInterval(updateLiveCamera, 3000);
 </script>
 
 </body>
